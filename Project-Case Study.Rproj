@@ -1,0 +1,101 @@
+library(ggplot2)
+library(lubridate)
+
+library(dplyr)
+library(readr)
+library(janitor)
+
+library(data.table)
+
+library(tidyr)
+library(data.table)
+
+library(hrbrthemes)
+
+library(mapview)
+
+colnames(X202101_divvy_tripdata)
+
+str(X202101_divvy_tripdata)
+
+all_trips <- bind_rows(X202101_divvy_tripdata,X202102_divvy_tripdata,X202103_divvy_tripdata,X202104_divvy_tripdata,X202105_divvy_tripdata,X202106_divvy_tripdata,X202107_divvy_tripdata,X202108_divvy_tripdata,X202109_divvy_tripdata,X202110_divvy_tripdata,X202111_divvy_tripdata,X202112_divvy_tripdata)
+
+colnames(all_trips)
+
+all_trips$date <- as.Date(all_trips$started_at) #The default format is yyyy-mm-dd
+all_trips$month <- format(as.Date(all_trips$date), "%m")
+all_trips$day <- format(as.Date(all_trips$date), "%d")
+all_trips$year <- format(as.Date(all_trips$date), "%Y")
+all_trips$day_of_week <- format(as.Date(all_trips$date), "%A")
+all_trips$time <- format(all_trips$started_at, format = "%H:%M")
+
+all_trips$time <- as.POSIXct(all_trips$time, format = "%H:%M", tz = "America/Chicago")
+is.POSIXct(all_trips$time)
+
+all_trips$ride_length <- difftime(all_trips$ended_at,all_trips$started_at)/60
+
+all_trips$ride_length <- as.numeric(as.character(all_trips$ride_length))
+is.numeric(all_trips$ride_length)
+
+all_trips_v2 <- all_trips[!(all_trips$start_station_name == "HQ QR" | all_trips$ride_length<0),]
+
+all_trips_v2 %>%  
+  drop_na(member_casual) %>%
+  group_by(member_casual) %>%
+  count() %>%
+  ungroup() %>%
+  mutate(perc = `n` / sum(`n`)) %>%
+  arrange(perc) %>%
+  mutate(labels = scales::percent(perc)) %>%
+  ggplot(aes(x="", y=perc, fill=member_casual)) +
+  geom_bar(stat="identity", width=1, color = "white") +
+  geom_text(aes(label = labels), color = "white",
+            position = position_stack(vjust = 0.5)) +
+  coord_polar("y", start=0) +
+  theme_void()
+
+aggregate(all_trips_v2$ride_length ~ all_trips_v2$member_casual, FUN = mean)
+
+print.data.frame(head(all_trips))
+
+all_trips_v2$day_of_week <- ordered(all_trips_v2$day_of_week, levels=c("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"))
+
+all_trips_v2 %>%  
+  drop_na(member_casual) %>%
+  group_by(member_casual, day_of_week) %>% 
+  summarise(average_trip_duration = mean(ride_length), .groups = 'keep') %>%
+  ggplot(aes(x = day_of_week, y = average_trip_duration, fill = member_casual)) +
+  geom_col(width=0.5, position = position_dodge(width=0.5)) + 
+  labs(title ="Average trip duration by customer type Vs. Day of the week")
+
+all_trips_v2 %>%  
+  drop_na(member_casual) %>%
+  group_by(member_casual, month) %>% 
+  summarise(average_trip_duration = mean(ride_length), .groups = 'keep') %>%
+  ggplot(aes(x = month, y = average_trip_duration, fill = member_casual)) +
+  geom_col(width=0.5, position = position_dodge(width=0.5)) + 
+  labs(title ="Average trip duration by customer type Vs. Month")
+
+all_trips_v2 %>%
+  drop_na(member_casual) %>%
+  group_by(member_casual, time) %>% 
+  summarise(number_of_trips = n(), .groups = 'keep') %>%
+  ggplot(aes(x = time, y = number_of_trips, color = member_casual, group = member_casual)) +
+  geom_line() +
+  scale_x_datetime(date_breaks = "1 hour", minor_breaks = NULL,
+                   date_labels = "%H:%M", expand = c(0,0)) +
+  theme(axis.text.x = element_text(angle = 90)) +
+  labs(title ="Demand over 24 hours of a day", x = "Time of the day")
+
+all_trips_v2 %>%  
+  drop_na(member_casual) %>%
+  group_by(member_casual, rideable_type) %>% 
+  summarise(number_of_rides = n(), .groups = 'keep') %>% 
+  arrange(member_casual, rideable_type)  %>% 
+  ggplot(aes(x = rideable_type, y = number_of_rides, fill = member_casual)) +
+  labs(title ="Total trips by customer type Vs. Month") +
+  theme(axis.text.x = element_text(angle = 30)) +
+  geom_col(width=0.5, position = position_dodge(width=0.5)) +
+  scale_y_continuous(labels = function(x) format(x, scientific = FALSE))
+
+
